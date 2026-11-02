@@ -19,7 +19,9 @@ jobs:
         with:
           gradle-version: 8.7
       - run: gradle -p proj assembleDebug --no-daemon
+      - name: Rename APK
+        run: mv proj/app/build/outputs/apk/debug/app-debug.apk X9Timer.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: X9Timer-debug-apk
-          path: proj/app/build/outputs/apk/debug/app-debug.apk
+          name: X9Timer
+          path: X9Timer.apk
