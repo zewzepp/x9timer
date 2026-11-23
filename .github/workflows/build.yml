@@ -1,27 +1,89 @@
 name: Build APK
+
 on:
   push:
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
-      - name: Accept Android licenses
-        run: yes | sdkmanager --licenses || true
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept licenses and install SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+
       - name: Unpack project
-        run: unzip -q X9TimerAndroid.zip -d proj
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf unpacked proj
+          mkdir -p unpacked proj
+
+          # Unpack the archive in the repository.
+          unzip -q X9TimerAndroid.zip -d unpacked
+
+          # Some copies contain the actual Android project in a second ZIP.
+          INNER_ZIP="$(find unpacked -type f -name 'X9TimerAndroid.zip' -print -quit || true)"
+          if [[ -n "$INNER_ZIP" ]]; then
+            mkdir -p unpacked/inner-project
+            unzip -q "$INNER_ZIP" -d unpacked/inner-project
+          fi
+
+          # Locate the real Gradle root, regardless of any enclosing folder.
+          SETTINGS_FILE="$(find unpacked -type f \
+            \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) \
+            -print -quit)"
+
+          if [[ -z "$SETTINGS_FILE" ]]; then
+            echo "ERROR: Could not find settings.gradle in the extracted project."
+            find unpacked -maxdepth 5 -type f -print | sort | head -200
+            exit 1
+          fi
+
+          PROJECT_ROOT="$(dirname "$SETTINGS_FILE")"
+          cp -a "$PROJECT_ROOT"/. proj/
+
+          if [[ ! -f proj/app/build.gradle && ! -f proj/app/build.gradle.kts ]]; then
+            echo "ERROR: Gradle root found, but app/build.gradle is missing."
+            find proj -maxdepth 4 -type f -print | sort | head -200
+            exit 1
+          fi
+
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 8.7
-      - run: gradle -p proj assembleDebug --no-daemon
+          gradle-version: '8.7'
+
+      - name: Build APK
+        run: gradle -p proj assembleDebug --no-daemon
+
       - name: Rename APK
-        run: mv proj/app/build/outputs/apk/debug/app-debug.apk X9Timer.apk
+        run: |
+          set -euo pipefail
+          APK="$(find proj/app/build/outputs/apk -type f -name '*.apk' -print -quit)"
+          if [[ -z "$APK" ]]; then
+            echo "ERROR: APK was not generated."
+            find proj/app/build/outputs -type f -print || true
+            exit 1
+          fi
+          cp "$APK" X9Timer.apk
+
       - uses: actions/upload-artifact@v4
         with:
           name: X9Timer
           path: X9Timer.apk
+          if-no-files-found: error
