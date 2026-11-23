@@ -1,62 +1,27 @@
-
-name: Build X9Timer APK
-
+name: Build APK
 on:
   push:
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
-    env:
-      ANDROID_HOME: /usr/local/lib/android/sdk
-      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
-
-      - name: Unpack project
-        run: |
-          set -e
-          unzip -q X9TimerAndroid.zip -d proj
-
+          java-version: 17
       - name: Accept Android licenses
-        run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-
+        run: yes | sdkmanager --licenses || true
+      - name: Unpack project
+        run: unzip -q X9TimerAndroid.zip -d proj
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.7'
-
-      - name: Build APK
-        run: |
-          set -e
-          gradle -p proj assembleDebug --no-daemon
-
-      - name: Find and rename APK
-        run: |
-          set -e
-
-          APK=$(find proj/app/build/outputs/apk \
-            -type f -name "*.apk" -print -quit)
-
-          if [ -z "$APK" ]; then
-            echo "APK not found!"
-            find proj/app/build/outputs -type f || true
-            exit 1
-          fi
-
-          cp "$APK" com.x9timer.app.apk
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+          gradle-version: 8.7
+      - run: gradle -p proj assembleDebug --no-daemon
+      - name: Rename APK
+        run: mv proj/app/build/outputs/apk/debug/app-debug.apk X9Timer.apk
+      - uses: actions/upload-artifact@v4
         with:
-          name: com.x9timer.app
-          path: com.x9timer.app.apk
-          if-no-files-found: error
+          name: X9Timer
+          path: X9Timer.apk
