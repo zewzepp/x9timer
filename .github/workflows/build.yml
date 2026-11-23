@@ -9,6 +9,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
     steps:
       - uses: actions/checkout@v4
 
@@ -17,25 +21,42 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      - name: Unpack project
+        run: |
+          set -e
+          unzip -q X9TimerAndroid.zip -d proj
+
+      - name: Accept Android licenses
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 8.7
+          gradle-version: '8.7'
 
       - name: Build APK
         run: |
           set -e
-          gradle assembleDebug --no-daemon
-          find app/build/outputs/apk -name "*.apk"
+          gradle -p proj assembleDebug --no-daemon
 
-      - name: Rename APK
+      - name: Find and rename APK
         run: |
-          APK=$(find app/build/outputs/apk/debug -name "*.apk" -print -quit)
-          test -n "$APK"
+          set -e
+
+          APK=$(find proj/app/build/outputs/apk \
+            -type f -name "*.apk" -print -quit)
+
+          if [ -z "$APK" ]; then
+            echo "APK not found!"
+            find proj/app/build/outputs -type f || true
+            exit 1
+          fi
+
           cp "$APK" com.x9timer.app.apk
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
           name: com.x9timer.app
           path: com.x9timer.app.apk
+          if-no-files-found: error
