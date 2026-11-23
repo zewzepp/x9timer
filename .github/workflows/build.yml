@@ -19,39 +19,48 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept licenses and install SDK packages
+      # Install Android SDK packages manually
+      - name: Install Android SDK
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+          set -euo pipefail
+
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+
+          if [[ -z "$SDKMANAGER" ]]; then
+            echo "sdkmanager not found"
+            exit 1
+          fi
+
+          yes | "$SDKMANAGER" --licenses || true
+
+          "$SDKMANAGER" \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
 
       - name: Unpack project
         shell: bash
         run: |
           set -euo pipefail
+
           rm -rf unpacked proj
           mkdir -p unpacked proj
 
-          # Unpack the archive in the repository.
           unzip -q X9TimerAndroid.zip -d unpacked
 
-          # Some copies contain the actual Android project in a second ZIP.
           INNER_ZIP="$(find unpacked -type f -name 'X9TimerAndroid.zip' -print -quit || true)"
+
           if [[ -n "$INNER_ZIP" ]]; then
             mkdir -p unpacked/inner-project
             unzip -q "$INNER_ZIP" -d unpacked/inner-project
           fi
 
-          # Locate the real Gradle root, regardless of any enclosing folder.
           SETTINGS_FILE="$(find unpacked -type f \
             \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) \
             -print -quit)"
 
           if [[ -z "$SETTINGS_FILE" ]]; then
-            echo "ERROR: Could not find settings.gradle in the extracted project."
-            find unpacked -maxdepth 5 -type f -print | sort | head -200
+            echo "ERROR: Could not find Gradle project."
+            find unpacked -maxdepth 5 -type f -print
             exit 1
           fi
 
@@ -59,8 +68,7 @@ jobs:
           cp -a "$PROJECT_ROOT"/. proj/
 
           if [[ ! -f proj/app/build.gradle && ! -f proj/app/build.gradle.kts ]]; then
-            echo "ERROR: Gradle root found, but app/build.gradle is missing."
-            find proj -maxdepth 4 -type f -print | sort | head -200
+            echo "ERROR: app/build.gradle is missing."
             exit 1
           fi
 
@@ -74,12 +82,14 @@ jobs:
       - name: Rename APK
         run: |
           set -euo pipefail
+
           APK="$(find proj/app/build/outputs/apk -type f -name '*.apk' -print -quit)"
+
           if [[ -z "$APK" ]]; then
             echo "ERROR: APK was not generated."
-            find proj/app/build/outputs -type f -print || true
             exit 1
           fi
+
           cp "$APK" X9Timer.apk
 
       - uses: actions/upload-artifact@v4
